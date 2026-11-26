@@ -36,5 +36,12 @@ class Settings(BaseSettings):
     # Searches the researcher may choose per sub-question. 0 = always search the sub-question as written.
     research_tool_calls: int = 2
 
+    # RAG: fetch full pages, embed them locally with Ollama, give the writer the best chunks.
+    rag: bool = True
+    embedding_model: str = "nomic-embed-text"
+    retrieval_k: int = 4  # chunks per sub-question
+    chunk_size: int = 1000
+    chunk_overlap: int = 150
+
     reports_dir: str = "reports"
     db_path: str = ".checkpoints.sqlite"

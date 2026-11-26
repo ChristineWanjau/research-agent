@@ -90,7 +90,7 @@ def has_citations(text: str) -> bool:
     return bool(re.search(r"\[\d+\]", text))
 
 
-def build_graph(llm, search: SearchProvider, settings: Settings, critic_llm=None, checkpointer=None):
+def build_graph(llm, search: SearchProvider, settings: Settings, critic_llm=None, checkpointer=None, retriever=None):
     critic_llm = critic_llm or llm
 
     def planner(state: ResearchState) -> dict:
@@ -114,6 +114,8 @@ def build_graph(llm, search: SearchProvider, settings: Settings, critic_llm=None
         sources = research_with_tools(question) if settings.research_tool_calls > 0 else []
         if not sources:  # tools off, model made no calls, or tool calling failed
             sources = search.search(question, settings.max_results)
+        if retriever is not None:
+            sources = retriever.retrieve(question, sources)
         return {"findings": [Finding(sub_question=question, sources=sources)]}
 
     def research_with_tools(question: str) -> list:

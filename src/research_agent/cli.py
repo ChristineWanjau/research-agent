@@ -10,6 +10,7 @@ from research_agent.cache import setup_cache
 from research_agent.config import Settings
 from research_agent.graph import build_graph, run_config
 from research_agent.llm import make_llms
+from research_agent.rag import make_retriever
 from research_agent.search import make_search
 
 
@@ -52,7 +53,9 @@ def main() -> None:
     search = make_search(settings)
 
     with SqliteSaver.from_conn_string(settings.db_path) as saver:
-        graph = build_graph(llm, search, settings, critic_llm=critic_llm, checkpointer=saver)
+        graph = build_graph(
+            llm, search, settings, critic_llm=critic_llm, checkpointer=saver, retriever=make_retriever(settings)
+        )
         thread_id = args.thread or str(uuid.uuid4())
         config = run_config(thread_id, settings)
         print(f"Thread: {thread_id}")

@@ -16,6 +16,9 @@ dependencies = [
     "python-slugify>=8.0",
     "streamlit>=1.40",
     "langchain>=1.5.2",
+    "langchain-text-splitters>=1.2.0",
+    "httpx>=0.28.1",
+    "beautifulsoup4>=4.15.0",
 ]
 
 [project.scripts]
