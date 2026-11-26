@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.checkpoints.sqlite*
+.langgraph_api/
+.pytest_cache/
+reports/*
+!reports/sample-report.md

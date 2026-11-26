@@ -1,0 +1,6 @@
+{
+  // Autopilot: approve every agent tool call without asking.
+  "chat.tools.autoApprove": true,
+  // Let the agent keep working through long tasks without "Continue?" prompts.
+  "chat.agent.maxRequests": 200,
+}
