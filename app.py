@@ -7,9 +7,11 @@ import streamlit as st
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
+from research_agent.cache import setup_cache
 from research_agent.config import Settings
 from research_agent.graph import build_graph, run_config
 from research_agent.llm import make_llms
+from research_agent.rag import make_retriever
 from research_agent.search import make_search
 
 STEPS = {
@@ -26,9 +28,17 @@ st.set_page_config(page_title="Research Agent", page_icon="🔎", layout="wide")
 @st.cache_resource
 def get_graph():
     settings = Settings()
+    setup_cache(settings)
     llm, critic_llm = make_llms(settings)
     conn = sqlite3.connect(settings.db_path, check_same_thread=False)
-    graph = build_graph(llm, make_search(settings), settings, critic_llm=critic_llm, checkpointer=SqliteSaver(conn))
+    graph = build_graph(
+        llm,
+        make_search(settings),
+        settings,
+        critic_llm=critic_llm,
+        checkpointer=SqliteSaver(conn),
+        retriever=make_retriever(settings),
+    )
     return graph, settings
 
 
