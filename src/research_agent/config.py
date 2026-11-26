@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     max_results: int = 3
     max_source_chars: int = 1500
     max_concurrency: int = 2
+    # Searches the researcher may choose per sub-question. 0 = always search the sub-question as written.
+    research_tool_calls: int = 2
 
     reports_dir: str = "reports"
     db_path: str = ".checkpoints.sqlite"

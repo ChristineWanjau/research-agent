@@ -73,3 +73,20 @@ def make_search(settings) -> SearchProvider:
     if settings.tavily_api_key:
         return FallbackSearch(TavilySearch(settings.tavily_api_key, settings.max_source_chars), ddg)
     return ddg
+
+
+def make_search_tool(search: SearchProvider, max_results: int):
+    """Expose a search provider as a LangChain tool the model can call.
+
+    The model sees readable text; the raw sources ride along as the tool message's `artifact`.
+    """
+    from langchain_core.tools import tool
+
+    @tool(response_format="content_and_artifact")
+    def web_search(query: str) -> tuple[str, list[Source]]:
+        """Search the web. Use a short, specific query, e.g. 'FastAPI requests per second benchmark'."""
+        results = search.search(query, max_results)
+        text = "\n\n".join(f"{r['title']} ({r['url']})\n{r['content']}" for r in results)
+        return text or "No results.", results
+
+    return web_search

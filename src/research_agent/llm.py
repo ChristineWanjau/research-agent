@@ -38,6 +38,9 @@ class WithFallback:
     def with_structured_output(self, schema):
         return self.primary.with_structured_output(schema).with_fallbacks([self.backup.with_structured_output(schema)])
 
+    def bind_tools(self, tools):
+        return self.primary.bind_tools(tools).with_fallbacks([self.backup.bind_tools(tools)])
+
 
 def make_llms(settings: Settings):
     """Return (main_llm, critic_llm). The critic model only applies to Groq."""

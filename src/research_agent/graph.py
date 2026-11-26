@@ -1,5 +1,6 @@
 """The research graph: plan → approve → research (parallel) → write → critique ↺ → save."""
 
+import logging
 import re
 from pathlib import Path
 
@@ -9,8 +10,17 @@ from langgraph.types import Send, interrupt
 from slugify import slugify
 
 from research_agent.config import Settings
-from research_agent.search import SearchProvider, Source
+from research_agent.search import SearchProvider, Source, make_search_tool
 from research_agent.state import Critique, Finding, Plan, ResearchState, ResearchTask
+
+log = logging.getLogger(__name__)
+
+RESEARCHER_PROMPT = ChatPromptTemplate.from_template("""You research one question for a technology comparison report.
+Use the web_search tool to find facts that answer it. You may search at most {max_calls} times.
+Prefer specific queries (names, versions, benchmarks) over repeating the question.
+Stop calling tools once you have enough facts.
+
+Question: {question}""")
 
 PLANNER_PROMPT = ChatPromptTemplate.from_template("""You plan research for a technology comparison report.
 Break the question into 3 to 5 focused sub-questions that can each be answered with a web search.
@@ -100,8 +110,33 @@ def build_graph(llm, search: SearchProvider, settings: Settings, critic_llm=None
         return [Send("researcher", ResearchTask(sub_question=q)) for q in state["pending"]]
 
     def researcher(task: ResearchTask) -> dict:
-        sources = search.search(task["sub_question"], settings.max_results)
-        return {"findings": [Finding(sub_question=task["sub_question"], sources=sources)]}
+        question = task["sub_question"]
+        sources = research_with_tools(question) if settings.research_tool_calls > 0 else []
+        if not sources:  # tools off, model made no calls, or tool calling failed
+            sources = search.search(question, settings.max_results)
+        return {"findings": [Finding(sub_question=question, sources=sources)]}
+
+    def research_with_tools(question: str) -> list:
+        """Let the model pick its own search queries, up to `research_tool_calls` searches."""
+        if not hasattr(llm, "bind_tools"):
+            return []
+        tool = make_search_tool(search, settings.max_results)
+        messages = RESEARCHER_PROMPT.invoke({"question": question, "max_calls": settings.research_tool_calls}).to_messages()
+        sources: list = []
+        try:
+            model = llm.bind_tools([tool])
+            for _ in range(settings.research_tool_calls):
+                reply = model.invoke(messages)
+                if not reply.tool_calls:
+                    break
+                messages.append(reply)
+                for call in reply.tool_calls:
+                    result = tool.invoke({**call, "type": "tool_call"})
+                    sources.extend(result.artifact or [])
+                    messages.append(result)
+        except Exception as exc:  # small local models sometimes emit malformed tool calls
+            log.warning("Tool-calling research failed for %r, using direct search: %s", question, exc)
+        return sources
 
     def writer(state: ResearchState) -> dict:
         sources = number_sources(state.get("findings", []))
