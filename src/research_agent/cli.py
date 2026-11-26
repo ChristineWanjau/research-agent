@@ -6,6 +6,7 @@ import uuid
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
+from research_agent.cache import setup_cache
 from research_agent.config import Settings
 from research_agent.graph import build_graph, run_config
 from research_agent.llm import make_llms
@@ -46,6 +47,7 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = Settings()
+    setup_cache(settings)
     llm, critic_llm = make_llms(settings)
     search = make_search(settings)
 

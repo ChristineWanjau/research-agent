@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings>=2.6",
     "python-slugify>=8.0",
     "streamlit>=1.40",
+    "langchain>=1.5.2",
 ]
 
 [project.scripts]

@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send, interrupt
 from slugify import slugify
@@ -11,13 +12,13 @@ from research_agent.config import Settings
 from research_agent.search import SearchProvider, Source
 from research_agent.state import Critique, Finding, Plan, ResearchState, ResearchTask
 
-PLANNER_PROMPT = """You plan research for a technology comparison report.
+PLANNER_PROMPT = ChatPromptTemplate.from_template("""You plan research for a technology comparison report.
 Break the question into 3 to 5 focused sub-questions that can each be answered with a web search.
 Cover: what each option is, key features, performance or scalability, ecosystem and community, and when to choose which.
 
-Question: {question}"""
+Question: {question}""")
 
-WRITER_PROMPT = """You write a technology comparison report in Markdown, using ONLY the numbered sources below.
+WRITER_PROMPT = ChatPromptTemplate.from_template("""You write a technology comparison report in Markdown, using ONLY the numbered sources below.
 
 Question: {question}
 
@@ -37,9 +38,9 @@ Write the report with exactly this structure:
 Rules:
 - Cite every factual claim inline with the source number, like [2].
 - Do not invent facts or cite numbers that are not in the source list.
-- Do NOT write a Sources section; it is added automatically."""
+- Do NOT write a Sources section; it is added automatically.""")
 
-CRITIC_PROMPT = """You review a technology comparison report.
+CRITIC_PROMPT = ChatPromptTemplate.from_template("""You review a technology comparison report.
 
 Question: {question}
 Sub-questions:
@@ -51,7 +52,7 @@ Report:
 Check: does every sub-question have an answered section? Is every claim cited? Is it accurate and useful?
 Give a score from 1 to 10. Verdict: "pass" if the score is 7 or more and nothing important is missing;
 "rewrite" if the writing, structure or citations need work; "research" if facts are missing,
-in which case give 1 to 3 new searchable follow_up_questions."""
+in which case give 1 to 3 new searchable follow_up_questions.""")
 
 
 def number_sources(findings: list[Finding]) -> list[Source]:
@@ -83,7 +84,7 @@ def build_graph(llm, search: SearchProvider, settings: Settings, critic_llm=None
     critic_llm = critic_llm or llm
 
     def planner(state: ResearchState) -> dict:
-        plan = llm.with_structured_output(Plan).invoke(PLANNER_PROMPT.format(question=state["question"]))
+        plan = llm.with_structured_output(Plan).invoke(PLANNER_PROMPT.invoke({"question": state["question"]}))
         subs = [q.strip() for q in plan.sub_questions if q.strip()][:5]
         return {"plan": subs, "revisions": 0}
 
@@ -107,18 +108,20 @@ def build_graph(llm, search: SearchProvider, settings: Settings, critic_llm=None
         feedback = ""
         if crit := state.get("critique"):
             feedback = "\nA reviewer found these problems in your previous draft; fix them:\n" + bullet(crit["issues"]) + "\n"
-        prompt = WRITER_PROMPT.format(
-            question=state["question"],
-            plan=bullet(state["plan"]),
-            sources=format_sources(sources) or "(no sources found)",
-            feedback=feedback,
+        prompt = WRITER_PROMPT.invoke(
+            {
+                "question": state["question"],
+                "plan": bullet(state["plan"]),
+                "sources": format_sources(sources) or "(no sources found)",
+                "feedback": feedback,
+            }
         )
         return {"draft": llm.invoke(prompt).content}
 
     def critic(state: ResearchState) -> dict:
         draft = state["draft"]
         c: Critique = critic_llm.with_structured_output(Critique).invoke(
-            CRITIC_PROMPT.format(question=state["question"], plan=bullet(state["plan"]), draft=draft)
+            CRITIC_PROMPT.invoke({"question": state["question"], "plan": bullet(state["plan"]), "draft": draft})
         )
         issues = list(c.issues)
         if not has_table(draft):

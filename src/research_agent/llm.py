@@ -1,33 +1,60 @@
-"""Builds chat models for the configured free-tier provider."""
+"""Builds chat models for the configured provider, with an optional backup provider."""
 
+from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 
 from research_agent.config import Settings
 
-
-def make_llm(settings: Settings, model: str | None = None) -> BaseChatModel:
-    name = model or settings.llm_model
-    match settings.llm_provider:
-        case "groq":
-            from langchain_groq import ChatGroq
-
-            return ChatGroq(model=name, api_key=settings.groq_api_key, temperature=0.2, max_retries=5)
-        case "gemini":
-            from langchain_google_genai import ChatGoogleGenerativeAI
-
-            return ChatGoogleGenerativeAI(
-                model=name, google_api_key=settings.google_api_key, temperature=0.2, max_retries=5
-            )
-        case "ollama":
-            from langchain_ollama import ChatOllama
-
-            return ChatOllama(model=name, temperature=0.2)
-    raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
+# Our setting names -> LangChain's provider names.
+PROVIDERS = {"groq": "groq", "gemini": "google_genai", "ollama": "ollama"}
 
 
-def make_llms(settings: Settings) -> tuple[BaseChatModel, BaseChatModel]:
+def _api_key(settings: Settings, provider: str) -> str | None:
+    return {"groq": settings.groq_api_key, "gemini": settings.google_api_key}.get(provider)
+
+
+def make_llm(settings: Settings, provider: str, model: str, max_retries: int = 5) -> BaseChatModel:
+    kwargs: dict = {}
+    if key := _api_key(settings, provider):
+        kwargs["api_key"] = key
+    if provider != "ollama":
+        kwargs["max_retries"] = max_retries
+    return init_chat_model(model, model_provider=PROVIDERS[provider], temperature=0.2, **kwargs)
+
+
+class WithFallback:
+    """A primary model plus a backup used when the primary errors (e.g. a rate limit).
+
+    Fallbacks are attached per call, because a fallback chain built on the raw models
+    no longer supports `with_structured_output`.
+    """
+
+    def __init__(self, primary, backup):
+        self.primary, self.backup = primary, backup
+
+    def invoke(self, prompt):
+        return self.primary.with_fallbacks([self.backup]).invoke(prompt)
+
+    def with_structured_output(self, schema):
+        return self.primary.with_structured_output(schema).with_fallbacks([self.backup.with_structured_output(schema)])
+
+
+def make_llms(settings: Settings):
     """Return (main_llm, critic_llm). The critic model only applies to Groq."""
-    main = make_llm(settings)
+    backup_provider = settings.fallback_provider
+    use_backup = (
+        backup_provider is not None
+        and backup_provider != settings.llm_provider
+        and (backup_provider == "ollama" or bool(_api_key(settings, backup_provider)))
+    )
+    # With a backup available, give up on the primary sooner instead of waiting out long retries.
+    retries = 2 if use_backup else 5
+
+    main = make_llm(settings, settings.llm_provider, settings.llm_model, retries)
     critic_name = settings.critic_model if settings.llm_provider == "groq" else None
-    critic = make_llm(settings, critic_name) if critic_name else main
+    critic = make_llm(settings, settings.llm_provider, critic_name, retries) if critic_name else main
+
+    if use_backup:
+        backup = make_llm(settings, backup_provider, settings.fallback_model)
+        main, critic = WithFallback(main, backup), WithFallback(critic, backup)
     return main, critic

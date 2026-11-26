@@ -32,12 +32,16 @@ class FakeLLM:
         self.texts = deque(texts)
         self.prompts: list[str] = []
 
+    def _record(self, prompt):
+        # Prompts arrive as ChatPromptTemplate values; store plain text for assertions.
+        self.prompts.append(prompt.to_string() if hasattr(prompt, "to_string") else prompt)
+
     def with_structured_output(self, schema):
         parent = self
 
         class _Runner:
             def invoke(self, prompt):
-                parent.prompts.append(prompt)
+                parent._record(prompt)
                 result = parent.structured.popleft()
                 assert isinstance(result, schema), f"expected {schema.__name__}, got {type(result).__name__}"
                 return result
@@ -45,7 +49,7 @@ class FakeLLM:
         return _Runner()
 
     def invoke(self, prompt):
-        self.prompts.append(prompt)
+        self._record(prompt)
         return SimpleNamespace(content=self.texts.popleft() if self.texts else GOOD_DRAFT)
 
 

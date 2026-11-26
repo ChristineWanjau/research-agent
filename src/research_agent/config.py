@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     llm_provider: Literal["groq", "gemini", "ollama"] = "groq"
     llm_model: str = "llama-3.3-70b-versatile"
     critic_model: str | None = "llama-3.1-8b-instant"
+    # Backup provider used when the main one errors (e.g. rate limits). Needs its API key.
+    fallback_provider: Literal["groq", "gemini", "ollama"] | None = "gemini"
+    fallback_model: str = "gemini-2.5-flash"
+
+    # Cache LLM responses on disk. Development only: re-runs reuse answers instead of spending quota.
+    llm_cache: bool = False
+    llm_cache_path: str = ".llm_cache.sqlite"
 
     groq_api_key: str | None = None
     google_api_key: str | None = None
